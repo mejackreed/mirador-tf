@@ -1,6 +1,6 @@
 import React, { Component, Fragment } from 'react';
 import Mirador from 'mirador/dist/es/src/index.js';
-import ManifestoCanvas from 'mirador/dist/es/src/lib/ManifestoCanvas';
+import MiradorCanvas from 'mirador/dist/es/src/lib/MiradorCanvas';
 import { MiradorMenuButton } from 'mirador/dist/es/src/components/MiradorMenuButton';
 import SentimentVerySatisfiedIcon from '@material-ui/icons/SentimentVerySatisfied';
 import CircularProgress from '@material-ui/core/CircularProgress';
@@ -51,9 +51,10 @@ class ButtonThing extends Component {
     const { receiveAnnotation, canvases } = this.props;
     const currentCanvasIds = canvases.map(canvas => canvas.id);
     canvases.map(canvas => {
-      const manifestoCanvas = new ManifestoCanvas(canvas);
+      const manifestoCanvas = new MiradorCanvas(canvas);
       const requestedWidth = 1024;
-      const imgUrl = manifestoCanvas.canonicalImageUri().replace('full/full', `full/${requestedWidth},`);
+      const imgUrl = manifestoCanvas.canvas.getCanonicalImageUri()
+        .replace(/full\/(\d+,\d*|full)/, `full/${requestedWidth},`);
       const sizeChange = requestedWidth / manifestoCanvas.imageResource.getWidth();
       const genUuid = uuid();
       const annoListId = `${canvas.id}/${genUuid}/annoList`;
@@ -62,38 +63,30 @@ class ButtonThing extends Component {
         window.m3Model.detect(img).then(predictions => {
           console.timeEnd('prediction');
           console.log(predictions);
-          const resources = predictions.map((prediction, index) => {
+          const items = predictions.map((prediction, index) => {
             let [x, y, w, h] = prediction.bbox;
             x = x / sizeChange;
             w = w / sizeChange;
             y = y / sizeChange;
             h = h / sizeChange;
             return {
-              '@id': `${canvas.id}/${genUuid}/${index}`,
-              '@type': 'oa:Annotation',
-              motivation: ['oa:commenting'],
-              on: {
-                '@type': 'oa:SpecificResource',
-                full: canvas.id,
-                selector: {
-                  '@type': 'oa:FragmentSelector',
-                  value: `xywh=${x},${y},${w},${h}`
-                }
-              },
-              resource: [
-                {
-                  chars: `${prediction.class} - ${prediction.score}`
-                }
-              ]
+              'id': `${canvas.id}/${genUuid}/${index}`,
+              'type': 'Annotation',
+              motivation: 'commenting',
+              target: `${canvas.id}#xywh=${x},${y},${w},${h}`,
+              body: {
+                type: 'TextualBody',
+                value: `${prediction.class} - ${prediction.score}`
+              }
             }
           });
-          const annoList = {
-            '@id': annoListId,
-            '@type': 'sc:AnnotationList',
-            resources: resources,
+          const annoPage = {
+            'id': annoListId,
+            'type': 'AnnotationPage',
+            items,
           }
 
-          receiveAnnotation(canvas.id, annoListId, annoList)
+          receiveAnnotation(canvas.id, annoListId, annoPage)
         });
       });
     });
@@ -125,7 +118,7 @@ class ButtonThing extends Component {
 
 class TensorFlowTool extends Component {
   render() {
-    const { TargetComponent, targetProps, receiveAnnotation, canvases } = this.props;
+    const { PluginComponents, TargetComponent, targetProps, receiveAnnotation, canvases } = this.props;
 
     return (
       <Fragment>
@@ -135,7 +128,7 @@ class TensorFlowTool extends Component {
             canvases={canvases}
           />
         </div>
-        <TargetComponent {...targetProps} />
+        <TargetComponent {...targetProps} PluginComponents={PluginComponents} />
       </Fragment>
     )
   }
@@ -147,7 +140,7 @@ const mapDispatchToProps = {
 
 function mapStateToProps(state, { targetProps }) {
   return {
-    canvases: Mirador.selectors.getSelectedCanvases(state, { windowId: targetProps.windowId }),
+    canvases: Mirador.selectors.getVisibleCanvases(state, { windowId: targetProps.windowId }),
   };
 };
 
